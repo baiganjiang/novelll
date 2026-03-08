@@ -25,7 +25,13 @@ async function callAI(
       { role: 'user', content: prompt }
     ];
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/chat`, {
+    let baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+    
+    if (!baseUrl && typeof window !== 'undefined' && (window.location.protocol === 'capacitor:' || window.location.protocol === 'http:' && window.location.hostname === 'localhost')) {
+      throw new Error("移动端未配置后端地址。请在 GitHub Secrets 中设置 VITE_API_BASE_URL 并重新构建 APK。");
+    }
+
+    const response = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
