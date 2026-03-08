@@ -1,9 +1,13 @@
 import express from "express";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Enable CORS for all origins
+  app.use(cors());
 
   // Increase payload limit for large context windows
   app.use(express.json({ limit: '50mb' }));
