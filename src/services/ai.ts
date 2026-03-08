@@ -31,27 +31,34 @@ async function callAI(
       throw new Error("移动端未配置后端地址。请在 GitHub Secrets 中设置 VITE_API_BASE_URL 并重新构建 APK。");
     }
 
-    const response = await fetch(`${baseUrl}/api/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        url: apiUrl,
-        key: apiKey,
-        model: profile.model,
-        messages,
-        temperature: profile.temperature,
-      })
-    });
+    try {
+      const response = await fetch(`${baseUrl}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: apiUrl,
+          key: apiKey,
+          model: profile.model,
+          messages,
+          temperature: profile.temperature,
+        })
+      });
 
-    if (!response.ok) {
-      const errData = await response.json();
-      throw new Error(`Custom API Error: ${response.status} - ${errData.error || 'Unknown Error'}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: '无法解析错误响应' }));
+        throw new Error(`服务器返回错误: ${response.status} - ${errData.error || '未知错误'}`);
+      }
+
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content || "API 返回格式异常";
+    } catch (error: any) {
+      if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+        throw new Error(`网络连接失败 (Fail to fetch)。请检查：\n1. 手机是否联网\n2. 后端地址是否正确: ${baseUrl}\n3. 服务器是否已启动 (Render 免费版启动较慢)`);
+      }
+      throw error;
     }
-
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || "API 返回格式异常";
   } else {
     // Use Default Gemini API
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
