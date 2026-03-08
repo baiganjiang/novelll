@@ -2,6 +2,25 @@ import { GoogleGenAI } from '@google/genai';
 import { CapacitorHttp } from '@capacitor/core';
 import { Character, AIProfile, Lore } from '../types';
 
+// Global environment detection
+const isBrowser = typeof window !== 'undefined';
+// Check if we are actually running in a native mobile environment
+const isNative = isBrowser && (window as any).Capacitor && (window as any).Capacitor.isNative;
+
+// Safely access environment variables
+const getEnv = (key: string): string => {
+  try {
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+      return (import.meta as any).env[key] || '';
+    }
+  } catch (e) {}
+  return '';
+};
+
+// Use proxy in ALL browser environments (including local dev and preview) to avoid CORS
+// Native apps (Capacitor) use native HTTP which bypasses CORS
+const useProxy = isBrowser && !isNative;
+
 async function callAI(
   systemInstruction: string,
   prompt: string,
@@ -19,26 +38,6 @@ async function callAI(
       throw new Error("未提供 API Base URL。请在设置中配置。");
     }
 
-    // Improved environment detection
-    const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || window.location.protocol === 'capacitor:');
-    const isWebPreview = typeof window !== 'undefined' && window.location.hostname.includes('run.app');
-    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    
-    // Use proxy in web environments (AI Studio preview or local dev) to avoid CORS
-    const useProxy = (isWebPreview || isLocalhost) && !isCapacitor;
-    
-    // Safely access environment variables
-    const getEnv = (key: string): string => {
-      try {
-        if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-          return (import.meta as any).env[key] || '';
-        }
-      } catch (e) {}
-      return '';
-    };
-
-    const baseUrl = getEnv('VITE_API_BASE_URL').replace(/\/+$/, '');
-
     const messages = [
       { role: 'system', content: systemInstruction },
       ...history.map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: m.text })),
@@ -51,10 +50,14 @@ async function callAI(
     }
 
     try {
-      let response;
       if (useProxy) {
         // Web: Use our backend proxy (built-in to the preview environment)
-        const response = await fetch(`${baseUrl}/api/chat`, {
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        const proxyUrl = `${origin}/api/chat`;
+        
+        console.log(`[AI Service] Web Proxy Request to: ${proxyUrl} for API: ${apiUrl}`);
+        
+        const response = await fetch(proxyUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -67,12 +70,13 @@ async function callAI(
         });
         if (!response.ok) {
           const errText = await response.text();
+          console.error(`[AI Service] Proxy Error Response:`, errText);
           throw new Error(`API 错误: ${response.status} - ${errText}`);
         }
         const data = await response.json();
-        return data.choices?.[0]?.message?.content || "API 返回格式异常";
-      } else if (isCapacitor) {
-        // Mobile: Use CapacitorHttp to bypass CORS
+        return data.choices?.[0]?.message?.content || "AI 没有返回内容";
+      } else if (isNative) {
+        // Mobile Native: Use CapacitorHttp to bypass CORS
         const response = await CapacitorHttp.post({
           url: fetchUrl,
           headers: {
@@ -88,9 +92,9 @@ async function callAI(
         if (response.status < 200 || response.status >= 300) {
           throw new Error(`API 错误: ${response.status} - ${JSON.stringify(response.data)}`);
         }
-        return response.data.choices?.[0]?.message?.content || "API 返回格式异常";
+        return response.data.choices?.[0]?.message?.content || "AI 没有返回内容";
       } else {
-        // Other (Local/Direct): Direct call
+        // Other (Local/Direct/Node): Direct call
         const response = await fetch(fetchUrl, {
           method: 'POST',
           headers: {
@@ -108,32 +112,13 @@ async function callAI(
           throw new Error(`API 错误: ${response.status} - ${errText}`);
         }
         const data = await response.json();
-        return data.choices?.[0]?.message?.content || "API 返回格式异常";
+        return data.choices?.[0]?.message?.content || "AI 没有返回内容";
       }
     } catch (error: any) {
       throw new Error(`请求失败: ${error.message}。请检查网络或 API 地址是否正确。`);
     }
   } else {
     // Use Gemini API
-    // Improved environment detection
-    const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || window.location.protocol === 'capacitor:');
-    const isWebPreview = typeof window !== 'undefined' && window.location.hostname.includes('run.app');
-    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-    
-    // Use proxy in web environments (AI Studio preview or local dev) to avoid CORS
-    const useProxy = (isWebPreview || isLocalhost) && !isCapacitor;
-    
-    // Safely access environment variables
-    const getEnv = (key: string): string => {
-      try {
-        if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-          return (import.meta as any).env[key] || '';
-        }
-      } catch (e) {}
-      return '';
-    };
-
-    const baseUrl = getEnv('VITE_API_BASE_URL').replace(/\/+$/, '');
     const envApiKey = getEnv('VITE_GEMINI_API_KEY');
     const apiKey = (profile.key || envApiKey || '').trim();
     
@@ -147,7 +132,12 @@ async function callAI(
     try {
       if (useProxy) {
         // Web: Use backend proxy for Gemini
-        const response = await fetch(`${baseUrl}/api/chat/gemini`, {
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        const proxyUrl = `${origin}/api/chat/gemini`;
+        
+        console.log(`[AI Service] Gemini Proxy Request to: ${proxyUrl}`);
+        
+        const response = await fetch(proxyUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -161,27 +151,13 @@ async function callAI(
         });
         if (!response.ok) {
           const errData = await response.json().catch(() => ({ error: '无法解析错误响应' }));
+          console.error(`[AI Service] Gemini Proxy Error:`, errData);
           throw new Error(`Gemini 服务器错误: ${response.status} - ${errData.error || '未知错误'}`);
         }
         const data = await response.json();
         return data.text || "AI 没有返回内容。";
-      } else if (isCapacitor) {
-        // Mobile: Use CapacitorHttp to bypass CORS for Gemini direct calls if needed
-        // Note: GoogleGenAI SDK might use fetch internally, which might still have CORS issues
-        // but typically for Gemini we use the SDK. If the SDK fails, we'd need a custom implementation.
-        // For now, let's stick to the SDK but wrap it if possible.
-        const ai = new GoogleGenAI({ apiKey });
-        const response = await ai.models.generateContent({
-          model: profile.model,
-          contents: fullPrompt,
-          config: {
-            systemInstruction,
-            temperature: profile.temperature,
-          }
-        });
-        return response.text || "AI 没有返回内容。";
       } else {
-        // Other: Direct call to Gemini
+        // Mobile Native or Direct: Use SDK
         const ai = new GoogleGenAI({ apiKey });
         const response = await ai.models.generateContent({
           model: profile.model,

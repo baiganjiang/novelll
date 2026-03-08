@@ -733,25 +733,29 @@ export default function App() {
         setDialog(null);
         setIsGeneratingBatchSummaries(true);
 
-        const updatedChapters = [...activeNovel.chapters];
+        let currentChapters = [...activeNovel.chapters];
         let generatedCount = 0;
         const totalToGenerate = chaptersWithoutSummary.length;
 
-        for (let i = 0; i < updatedChapters.length; i++) {
-          const chapter = updatedChapters[i];
+        for (let i = 0; i < currentChapters.length; i++) {
+          const chapter = currentChapters[i];
           if (!chapter.summary && chapter.content.trim()) {
             setCurrentGeneratingChapterId(chapter.id);
             setBatchSummaryProgress({ current: generatedCount + 1, total: totalToGenerate, title: chapter.title });
+            
             try {
               const summary = await generateChapterSummary(chapter.content, activeProfile);
-              updatedChapters[i] = { ...chapter, summary };
-              generatedCount++;
-              // Update state incrementally so user sees progress
-              updateActiveNovel({ chapters: [...updatedChapters] });
               
-              // Add a delay between requests to avoid rate limits (429 Too Many Requests)
+              // Update local copy
+              currentChapters[i] = { ...chapter, summary };
+              generatedCount++;
+              
+              // Update state incrementally
+              updateActiveNovel({ chapters: [...currentChapters] });
+              
+              // Small delay to prevent UI freezing and rate limits
               if (generatedCount < totalToGenerate) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await new Promise(resolve => setTimeout(resolve, 1500));
               }
             } catch (e: any) {
               console.error(`Failed to generate summary for chapter ${chapter.title}`, e);
@@ -764,7 +768,7 @@ export default function App() {
               setCurrentGeneratingChapterId(null);
               setBatchSummaryProgress(null);
               setIsGeneratingBatchSummaries(false);
-              return; // Stop the loop and exit
+              return;
             }
           }
         }
