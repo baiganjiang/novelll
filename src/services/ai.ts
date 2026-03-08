@@ -4,8 +4,14 @@ import { Character, AIProfile, Lore } from '../types';
 
 // Global environment detection
 const isBrowser = typeof window !== 'undefined';
-// Check if we are actually running in a native mobile environment
-const isNative = isBrowser && (Capacitor.isNativePlatform() || window.location.protocol === 'capacitor:');
+// Check if we are actually running in a native mobile environment (iOS or Android)
+const isNative = isBrowser && (
+  (window as any).Capacitor?.isNativePlatform?.() || 
+  window.location.protocol === 'capacitor:' || 
+  window.location.protocol === 'app:' ||
+  (window as any).Capacitor?.platform === 'ios' ||
+  (window as any).Capacitor?.platform === 'android'
+);
 
 // Safely access environment variables
 const getEnv = (key: string): string => {
