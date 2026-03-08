@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { CapacitorHttp } from '@capacitor/core';
 import { Character, AIProfile, Lore } from '../types';
 
 async function callAI(
@@ -53,7 +54,7 @@ async function callAI(
       let response;
       if (useProxy) {
         // Web: Use our backend proxy (built-in to the preview environment)
-        response = await fetch(`${baseUrl}/api/chat`, {
+        const response = await fetch(`${baseUrl}/api/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -64,9 +65,33 @@ async function callAI(
             temperature: profile.temperature,
           })
         });
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`API 错误: ${response.status} - ${errText}`);
+        }
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || "API 返回格式异常";
+      } else if (isCapacitor) {
+        // Mobile: Use CapacitorHttp to bypass CORS
+        const response = await CapacitorHttp.post({
+          url: fetchUrl,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          data: {
+            model: profile.model,
+            messages,
+            temperature: profile.temperature,
+          }
+        });
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`API 错误: ${response.status} - ${JSON.stringify(response.data)}`);
+        }
+        return response.data.choices?.[0]?.message?.content || "API 返回格式异常";
       } else {
-        // Mobile: Direct call
-        response = await fetch(fetchUrl, {
+        // Other (Local/Direct): Direct call
+        const response = await fetch(fetchUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -78,15 +103,13 @@ async function callAI(
             temperature: profile.temperature,
           })
         });
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`API 错误: ${response.status} - ${errText}`);
+        }
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || "API 返回格式异常";
       }
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`API 错误: ${response.status} - ${errText}`);
-      }
-
-      const data = await response.json();
-      return data.choices?.[0]?.message?.content || "API 返回格式异常";
     } catch (error: any) {
       throw new Error(`请求失败: ${error.message}。请检查网络或 API 地址是否正确。`);
     }
@@ -142,8 +165,23 @@ async function callAI(
         }
         const data = await response.json();
         return data.text || "AI 没有返回内容。";
+      } else if (isCapacitor) {
+        // Mobile: Use CapacitorHttp to bypass CORS for Gemini direct calls if needed
+        // Note: GoogleGenAI SDK might use fetch internally, which might still have CORS issues
+        // but typically for Gemini we use the SDK. If the SDK fails, we'd need a custom implementation.
+        // For now, let's stick to the SDK but wrap it if possible.
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await ai.models.generateContent({
+          model: profile.model,
+          contents: fullPrompt,
+          config: {
+            systemInstruction,
+            temperature: profile.temperature,
+          }
+        });
+        return response.text || "AI 没有返回内容。";
       } else {
-        // Mobile: Direct call to Gemini
+        // Other: Direct call to Gemini
         const ai = new GoogleGenAI({ apiKey });
         const response = await ai.models.generateContent({
           model: profile.model,
