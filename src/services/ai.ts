@@ -18,13 +18,13 @@ async function callAI(
       throw new Error("未提供 API Base URL。请在设置中配置。");
     }
 
-    // Hybrid logic: Use proxy for web (to bypass CORS), direct for mobile
-    const isMobile = typeof window !== 'undefined' && (window.location.protocol === 'capacitor:' || window.navigator.userAgent.includes('Capacitor'));
-    const baseUrl = ((import.meta as any).env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+    // Improved environment detection
+    const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || window.location.protocol === 'capacitor:');
+    const isWebPreview = typeof window !== 'undefined' && window.location.hostname.includes('run.app');
     
-    // In web version (AI Studio preview), we use the local backend proxy
-    // In mobile version, we call the API directly
-    const useProxy = !isMobile;
+    // Only use proxy in the AI Studio web preview environment
+    const useProxy = isWebPreview && !isCapacitor;
+    const baseUrl = ((import.meta as any).env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
     const messages = [
       { role: 'system', content: systemInstruction },
@@ -85,9 +85,13 @@ async function callAI(
       throw new Error("未配置 Gemini API Key。请在设置中配置。");
     }
 
-    const isMobile = typeof window !== 'undefined' && (window.location.protocol === 'capacitor:' || window.navigator.userAgent.includes('Capacitor'));
+    // Improved environment detection
+    const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || window.location.protocol === 'capacitor:');
+    const isWebPreview = typeof window !== 'undefined' && window.location.hostname.includes('run.app');
+    
+    // Only use proxy in the AI Studio web preview environment
+    const useProxy = isWebPreview && !isCapacitor;
     const baseUrl = ((import.meta as any).env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
-    const useProxy = !isMobile;
 
     const historyText = history.map(m => `${m.role === 'user' ? '作者' : 'AI助手'}: ${m.text}`).join('\n\n');
     const fullPrompt = `${historyText ? `历史对话记录:\n${historyText}\n\n` : ''}作者: ${prompt}\nAI助手: `;
