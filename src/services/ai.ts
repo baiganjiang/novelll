@@ -21,10 +21,22 @@ async function callAI(
     // Improved environment detection
     const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || window.location.protocol === 'capacitor:');
     const isWebPreview = typeof window !== 'undefined' && window.location.hostname.includes('run.app');
+    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     
-    // Only use proxy in the AI Studio web preview environment
-    const useProxy = isWebPreview && !isCapacitor;
-    const baseUrl = ((import.meta as any).env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+    // Use proxy in web environments (AI Studio preview or local dev) to avoid CORS
+    const useProxy = (isWebPreview || isLocalhost) && !isCapacitor;
+    
+    // Safely access environment variables
+    const getEnv = (key: string): string => {
+      try {
+        if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+          return (import.meta as any).env[key] || '';
+        }
+      } catch (e) {}
+      return '';
+    };
+
+    const baseUrl = getEnv('VITE_API_BASE_URL').replace(/\/+$/, '');
 
     const messages = [
       { role: 'system', content: systemInstruction },
@@ -80,18 +92,31 @@ async function callAI(
     }
   } else {
     // Use Gemini API
-    const apiKey = (profile.key || process.env.GEMINI_API_KEY || '').trim();
-    if (!apiKey) {
-      throw new Error("未配置 Gemini API Key。请在设置中配置。");
-    }
-
     // Improved environment detection
     const isCapacitor = typeof window !== 'undefined' && ((window as any).Capacitor || window.location.protocol === 'capacitor:');
     const isWebPreview = typeof window !== 'undefined' && window.location.hostname.includes('run.app');
+    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
     
-    // Only use proxy in the AI Studio web preview environment
-    const useProxy = isWebPreview && !isCapacitor;
-    const baseUrl = ((import.meta as any).env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+    // Use proxy in web environments (AI Studio preview or local dev) to avoid CORS
+    const useProxy = (isWebPreview || isLocalhost) && !isCapacitor;
+    
+    // Safely access environment variables
+    const getEnv = (key: string): string => {
+      try {
+        if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+          return (import.meta as any).env[key] || '';
+        }
+      } catch (e) {}
+      return '';
+    };
+
+    const baseUrl = getEnv('VITE_API_BASE_URL').replace(/\/+$/, '');
+    const envApiKey = getEnv('VITE_GEMINI_API_KEY');
+    const apiKey = (profile.key || envApiKey || '').trim();
+    
+    if (!apiKey && !useProxy) {
+      throw new Error("未配置 Gemini API Key。请在设置中配置。");
+    }
 
     const historyText = history.map(m => `${m.role === 'user' ? '作者' : 'AI助手'}: ${m.text}`).join('\n\n');
     const fullPrompt = `${historyText ? `历史对话记录:\n${historyText}\n\n` : ''}作者: ${prompt}\nAI助手: `;
