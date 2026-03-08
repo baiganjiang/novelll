@@ -60,20 +60,40 @@ async function callAI(
       throw error;
     }
   } else {
-    // Use Default Gemini API
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    // Use Default Gemini API via backend proxy
+    let baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
     const historyText = history.map(m => `${m.role === 'user' ? '作者' : 'AI助手'}: ${m.text}`).join('\n\n');
     const fullPrompt = `${historyText ? `历史对话记录:\n${historyText}\n\n` : ''}作者: ${prompt}\nAI助手: `;
 
-    const response = await ai.models.generateContent({
-      model: profile.model,
-      contents: fullPrompt,
-      config: {
-        systemInstruction,
-        temperature: profile.temperature,
+    try {
+      const response = await fetch(`${baseUrl}/api/chat/gemini`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: profile.model,
+          contents: fullPrompt,
+          config: {
+            systemInstruction,
+            temperature: profile.temperature,
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ error: '无法解析错误响应' }));
+        throw new Error(`Gemini 服务器错误: ${response.status} - ${errData.error || '未知错误'}`);
       }
-    });
-    return response.text || "AI 没有返回内容。";
+
+      const data = await response.json();
+      return data.text || "AI 没有返回内容。";
+    } catch (error: any) {
+      if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+        throw new Error(`无法连接到 AI 服务器。请检查后端地址配置。`);
+      }
+      throw error;
+    }
   }
 }
 
