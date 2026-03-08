@@ -2140,34 +2140,35 @@ export default function App() {
                             value={profile.model}
                             onChange={(e) => updateAIProfile(profile.id, { model: e.target.value })}
                             className="w-full p-1.5 text-sm bg-white border border-stone-200 rounded"
-                            placeholder="gpt-3.5-turbo..."
+                            placeholder={profile.provider === 'gemini' ? 'gemini-3-flash-preview' : 'gpt-3.5-turbo...'}
                           />
                         </div>
                       </div>
 
+                      <div>
+                        <label className="block text-xs text-stone-500 mb-1">
+                          {profile.provider === 'gemini' ? 'Gemini API Key (可选，留空使用内置)' : 'API Key'}
+                        </label>
+                        <input 
+                          type="password" 
+                          value={profile.key || ''}
+                          onChange={(e) => updateAIProfile(profile.id, { key: e.target.value })}
+                          className="w-full p-1.5 text-sm bg-white border border-stone-200 rounded"
+                          placeholder={profile.provider === 'gemini' ? '在此填入你的 Gemini Key' : 'sk-...'}
+                        />
+                      </div>
+
                       {profile.provider === 'custom' && (
-                        <>
-                          <div>
-                            <label className="block text-xs text-stone-500 mb-1">API Base URL</label>
-                            <input 
-                              type="text" 
-                              value={profile.url || ''}
-                              onChange={(e) => updateAIProfile(profile.id, { url: e.target.value })}
-                              className="w-full p-1.5 text-sm bg-white border border-stone-200 rounded"
-                              placeholder="https://api.openai.com/v1/chat/completions"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-stone-500 mb-1">API Key</label>
-                            <input 
-                              type="password" 
-                              value={profile.key || ''}
-                              onChange={(e) => updateAIProfile(profile.id, { key: e.target.value })}
-                              className="w-full p-1.5 text-sm bg-white border border-stone-200 rounded"
-                              placeholder="sk-..."
-                            />
-                          </div>
-                        </>
+                        <div>
+                          <label className="block text-xs text-stone-500 mb-1">API Base URL</label>
+                          <input 
+                            type="text" 
+                            value={profile.url || ''}
+                            onChange={(e) => updateAIProfile(profile.id, { url: e.target.value })}
+                            className="w-full p-1.5 text-sm bg-white border border-stone-200 rounded"
+                            placeholder="https://api.openai.com/v1/chat/completions"
+                          />
+                        </div>
                       )}
 
                       <div>

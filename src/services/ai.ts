@@ -18,81 +18,116 @@ async function callAI(
       throw new Error("未提供 API Base URL。请在设置中配置。");
     }
 
-    // Use Custom OpenAI-compatible API via backend proxy to bypass CORS
+    // Hybrid logic: Use proxy for web (to bypass CORS), direct for mobile
+    const isMobile = typeof window !== 'undefined' && (window.location.protocol === 'capacitor:' || window.navigator.userAgent.includes('Capacitor'));
+    const baseUrl = ((import.meta as any).env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+    
+    // In web version (AI Studio preview), we use the local backend proxy
+    // In mobile version, we call the API directly
+    const useProxy = !isMobile;
+
     const messages = [
       { role: 'system', content: systemInstruction },
       ...history.map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: m.text })),
       { role: 'user', content: prompt }
     ];
 
-    let baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
-    
-    if (!baseUrl && typeof window !== 'undefined' && (window.location.protocol === 'capacitor:' || window.location.protocol === 'http:' && window.location.hostname === 'localhost')) {
-      throw new Error("移动端未配置后端地址。请在 GitHub Secrets 中设置 VITE_API_BASE_URL 并重新构建 APK。");
+    let fetchUrl = apiUrl.trim();
+    if (!fetchUrl.endsWith('/chat/completions') && !fetchUrl.endsWith('/completions')) {
+      fetchUrl = fetchUrl.replace(/\/+$/, '') + '/chat/completions';
     }
 
     try {
-      const response = await fetch(`${baseUrl}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: apiUrl,
-          key: apiKey,
-          model: profile.model,
-          messages,
-          temperature: profile.temperature,
-        })
-      });
+      let response;
+      if (useProxy) {
+        // Web: Use our backend proxy (built-in to the preview environment)
+        response = await fetch(`${baseUrl}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: apiUrl,
+            key: apiKey,
+            model: profile.model,
+            messages,
+            temperature: profile.temperature,
+          })
+        });
+      } else {
+        // Mobile: Direct call
+        response = await fetch(fetchUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: profile.model,
+            messages,
+            temperature: profile.temperature,
+          })
+        });
+      }
 
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({ error: '无法解析错误响应' }));
-        throw new Error(`服务器返回错误: ${response.status} - ${errData.error || '未知错误'}`);
+        const errText = await response.text();
+        throw new Error(`API 错误: ${response.status} - ${errText}`);
       }
 
       const data = await response.json();
       return data.choices?.[0]?.message?.content || "API 返回格式异常";
     } catch (error: any) {
-      if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-        throw new Error(`网络连接失败 (Fail to fetch)。请检查：\n1. 手机是否联网\n2. 后端地址是否正确: ${baseUrl}\n3. 服务器是否已启动 (Render 免费版启动较慢)`);
-      }
-      throw error;
+      throw new Error(`请求失败: ${error.message}。请检查网络或 API 地址是否正确。`);
     }
   } else {
-    // Use Default Gemini API via backend proxy
-    let baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+    // Use Gemini API
+    const apiKey = (profile.key || process.env.GEMINI_API_KEY || '').trim();
+    if (!apiKey) {
+      throw new Error("未配置 Gemini API Key。请在设置中配置。");
+    }
+
+    const isMobile = typeof window !== 'undefined' && (window.location.protocol === 'capacitor:' || window.navigator.userAgent.includes('Capacitor'));
+    const baseUrl = ((import.meta as any).env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+    const useProxy = !isMobile;
+
     const historyText = history.map(m => `${m.role === 'user' ? '作者' : 'AI助手'}: ${m.text}`).join('\n\n');
     const fullPrompt = `${historyText ? `历史对话记录:\n${historyText}\n\n` : ''}作者: ${prompt}\nAI助手: `;
 
     try {
-      const response = await fetch(`${baseUrl}/api/chat/gemini`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      if (useProxy) {
+        // Web: Use backend proxy for Gemini
+        const response = await fetch(`${baseUrl}/api/chat/gemini`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: profile.model,
+            contents: fullPrompt,
+            config: {
+              systemInstruction,
+              temperature: profile.temperature,
+            }
+          })
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({ error: '无法解析错误响应' }));
+          throw new Error(`Gemini 服务器错误: ${response.status} - ${errData.error || '未知错误'}`);
+        }
+        const data = await response.json();
+        return data.text || "AI 没有返回内容。";
+      } else {
+        // Mobile: Direct call to Gemini
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await ai.models.generateContent({
           model: profile.model,
           contents: fullPrompt,
           config: {
             systemInstruction,
             temperature: profile.temperature,
           }
-        })
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({ error: '无法解析错误响应' }));
-        throw new Error(`Gemini 服务器错误: ${response.status} - ${errData.error || '未知错误'}`);
+        });
+        return response.text || "AI 没有返回内容。";
       }
-
-      const data = await response.json();
-      return data.text || "AI 没有返回内容。";
     } catch (error: any) {
-      if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-        throw new Error(`无法连接到 AI 服务器。请检查后端地址配置。`);
-      }
-      throw error;
+      throw new Error(`Gemini 请求失败: ${error.message}`);
     }
   }
 }
