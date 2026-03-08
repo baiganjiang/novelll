@@ -29,14 +29,23 @@ jobs:
           java-version: '17'
           distribution: 'zulu'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
       - name: Sync Capacitor
         run: npx cap sync android
 
       - name: Build Android APK
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          # If the wrapper is corrupt, try to use system gradle
+          if ! ./gradlew --version > /dev/null 2>&1; then
+            echo "Gradle wrapper is corrupt, attempting to use system gradle..."
+            gradle assembleDebug
+          else
+            chmod +x gradlew
+            ./gradlew assembleDebug
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -66,7 +75,6 @@ jobs:
 
       - name: Build iOS App
         run: |
-          npx cap open ios
-          # Note: Full automated iOS build requires certificates and provisioning profiles.
-          # This step just syncs the project. For a full CI build, you'd use xcodebuild.
-          # But since this is a demo, we'll stop here or provide a basic xcodebuild command.
+          # Attempt to build the project without signing for verification
+          # Note: This will not produce a installable .ipa without certificates
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug -sdk iphoneos CODE_SIGNING_ALLOWED=NO
