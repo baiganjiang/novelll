@@ -1,11 +1,11 @@
 import { GoogleGenAI } from '@google/genai';
-import { CapacitorHttp } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import { Character, AIProfile, Lore } from '../types';
 
 // Global environment detection
 const isBrowser = typeof window !== 'undefined';
 // Check if we are actually running in a native mobile environment
-const isNative = isBrowser && (window as any).Capacitor && (window as any).Capacitor.isNative;
+const isNative = isBrowser && (Capacitor.isNativePlatform() || window.location.protocol === 'capacitor:');
 
 // Safely access environment variables
 const getEnv = (key: string): string => {
@@ -17,7 +17,7 @@ const getEnv = (key: string): string => {
   return '';
 };
 
-// Use proxy in ALL browser environments (including local dev and preview) to avoid CORS
+// Use proxy in web browser environments (including local dev and preview) to avoid CORS
 // Native apps (Capacitor) use native HTTP which bypasses CORS
 const useProxy = isBrowser && !isNative;
 
